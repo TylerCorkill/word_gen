@@ -138,5 +138,12 @@ class Word(Dictionary):
 
 if __name__ == '__main__':
 	start = Word()
-	start.gen(3)
+	while True:
+		try:
+			start.length = int(raw_input('Length: '))
+		except TypeError:
+			print 'Number only'
+		else:
+			break
+	start.gen(start.length)
 	# Dictionary()
