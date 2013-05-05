@@ -14,19 +14,24 @@ class Dictionary(object):
 		from json import loads
 		from re import sub
 
-		with open("dict.txt", "rb") as dictFile:
-			self.dict = loads(dictFile.read())
-		with open('.antidict', 'rb') as anti:
-			self.anti = loads(anti.read())
+		with open('.dict', "rb") as dictFile:
+			self.dict = self.expand(dictFile)
+		with open('.anti', 'rb') as anti:
+			self.anti = self.expand(anti)
+
+		# print self.dict
+		# print self.anti
+
+		# self.count = 0
 		self.word = []
-		self.list = []
+		self.dictlist = []
 		self.antilist = []
 		self.scan(self.dict)
 		self.scan(self.anti, True)
 		
-		dictionary = ', '.join(self.list)
+		dictionary = ', '.join(self.dictlist)
 		print 'Dictionary:', dictionary
-		print 'Words:', len(self.list)
+		print 'Words:', len(self.dictlist)
 		print 'Characters: %s\n' % len(sub('[, ]','',dictionary))
 
 		antiDict = ', '.join(self.antilist)
@@ -38,15 +43,16 @@ class Dictionary(object):
 		for char in charDict:
 			if char != '*':
 				self.word.append(char)
+				# print charDict[char], char
 				if '*' in charDict[char] or not charDict[char]:
 					word = ''.join(self.word)
 					try:
 						if anti:
 							self.antilist.append(word)
-							if word in self.list:
+							if word in self.dictlist:
 								raise Duplicate(word)
 						else:
-							self.list.append(word)
+							self.dictlist.append(word)
 							if word in self.antilist:
 								raise Duplicate(word)
 					except Duplicate as e:
@@ -57,6 +63,30 @@ class Dictionary(object):
 					else:
 						self.scan(charDict[char])
 				del self.word[-1]
+
+	def shrink(self, dictIn):
+		from json import dumps
+
+		dictionary = dumps(dictIn)
+		dictionary = dictionary.replace("\": {}, \"", "-")
+		dictionary = dictionary.replace("\": {\"", "~")
+		dictionary = dictionary.replace("*\": 0, \"", "*")
+		dictionary = dictionary.replace("\": {}}, \"", "+")
+		# print dictionary
+		return dictionary
+
+	def expand(self, dictIn):
+		from json import loads
+
+		dictionary = dictIn.read()
+		dictionary = dictionary.replace("+", "\": {}}, \"")
+		dictionary = dictionary.replace("*", "*\": 0, \"")
+		dictionary = dictionary.replace("~", "\": {\"")
+		dictionary = dictionary.replace("-", "\": {}, \"")
+		# print dictionary
+		dictionary = loads(dictionary)
+		# print dictionary
+		return dictionary
 
 # ----------------------------------------------------------------------------
 
@@ -73,40 +103,43 @@ class Word(Dictionary):
 					'k','j','x','q','z']
 		# alphabet = ['m','w','f','g','y','p','b',
 		# 			'v','k','j','x','q','z']
-		diction, antidict = False, False
+		# diction, antidict = False, False
 		for char in alphabet:
 			self.word.append(char)
 			check = self.check()
+			dictlist, antilist = 0, 0
 			if check:
 				word = ''.join(self.word)
 				if check == 1:
-					if not diction:
-						diction = True
 					print '+', word
-					self.list.append(word)
+					self.dictlist.append(word)
 					self.add(self.dict)
+					if not dictlist: dictlist += 1
 				elif check == 2:
-					if not antidict:
-						antidict = True
 					print '-', word
 					self.antilist.append(word)
 					self.add(self.anti)
+					if not antilist: antilist += 1
 			if length < maxLen:
 				self.gen(maxLen, length + 1)
 			del self.word[-1]
-		self.commit(diction, antidict)
+			self.commit(dictlist, antilist)
 
 	def check(self):
 		from urllib import urlopen
 		from json import loads
 
 		word = ''.join(self.word)
-		if (word not in self.list) and (word not in self.antilist):
+		if (word not in self.dictlist) and (word not in self.antilist):
 			url = "http://api.urbandictionary.com/v0/define?term=" + word
-			if loads(urlopen(url).readline())["result_type"] == "exact":
-				return 1
-			else:
-				return 2
+			while True:
+				try:
+					if loads(urlopen(url).readline())["result_type"] == "exact":
+						return 1
+					else:
+						return 2
+				except:
+					pass
 		# else:
 		# 	print '*', word
 		return
@@ -121,17 +154,18 @@ class Word(Dictionary):
 				charDict[letter]['*'] = 0
 			self.add(charDict[letter], pos)
 
-	def commit(self, diction=False, antidict=False):
-		from json import dumps
+	def commit(self, dictlist, antilist):
+		# self.count += 1
+		# print self.count
 
-		if antidict:
-			with open('.antidict', 'wb') as f:
+		if dictlist:
+			with open('.dict', 'wb') as f:
 				f.truncate()
-				f.write(dumps(self.anti))
-		if diction:
-			with open('dict.txt', 'wb') as f:
+				f.write(self.shrink(self.dict))
+		if antilist:
+			with open('.anti', 'wb') as f:
 				f.truncate()
-				f.write(dumps(self.dict))
+				f.write(self.shrink(self.anti))
 
 # ----------------------------------------------------------------------------
 
