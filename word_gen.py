@@ -114,8 +114,6 @@ class Word(Dictionary):
 				except:
 					print "."
 					continue
-		# else:
-		# 	print '*', word
 		return
 
 	def add(self, charDict, pos=0):
