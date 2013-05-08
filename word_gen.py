@@ -1,4 +1,8 @@
-
+from threading import Thread
+from json import dumps, loads
+from re import sub
+from string import lowercase, digits
+from urllib import urlopen
 # Exception classes
 
 class Duplicate(Exception):
@@ -15,9 +19,9 @@ class Dictionary(object):
 		from re import sub
 
 		with open('.dict', "rb") as dictFile:
-			self.dict = self.expand(dictFile)
+			self.dict = expand(dictFile)
 		with open('.anti', 'rb') as anti:
-			self.anti = self.expand(anti)
+			self.anti = expand(anti)
 
 		# print self.dict
 		# print self.anti
@@ -26,20 +30,20 @@ class Dictionary(object):
 		self.word = []
 		self.dictlist = []
 		self.antilist = []
-		self.scan(self.dict)
+		self.scan(self.dict, False)
 		self.scan(self.anti, True)
 		
 		dictionary = ', '.join(self.dictlist)
 		print 'Dictionary:', dictionary
 		print 'Words:', len(self.dictlist)
-		print 'Characters: %s\n' % len(sub('[, ]','',dictionary))
+		print 'Characters: %s\n' % len(dictionary.replace(', ',''))
 
 		antiDict = ', '.join(self.antilist)
 		print 'Anti-Dictionary:', antiDict
 		print 'Words:', len(self.antilist)
-		print 'Characters: %s\n' % len(sub('[, ]','',antiDict))
+		print 'Characters: %s\n' % len(antiDict.replace(', ',''))
 
-	def scan(self, charDict, anti=False):	
+	def scan(self, charDict, anti):	
 		for char in charDict:
 			if char != '*':
 				self.word.append(char)
@@ -56,37 +60,13 @@ class Dictionary(object):
 							if word in self.antilist:
 								raise Duplicate(word)
 					except Duplicate as e:
-						print 'Error> duplicate,' + e.value
+						print 'Error: duplicate,' + e.value
 				if charDict[char]:
-					if anti:
-						self.scan(charDict[char], True)
-					else:
-						self.scan(charDict[char])
+					nextScan = Thread(target=self.scan, args=(charDict[char], anti))
+					nextScan.start()
+					nextScan.join()
+					del nextScan
 				del self.word[-1]
-
-	def shrink(self, dictIn):
-		from json import dumps
-
-		dictionary = dumps(dictIn)
-		dictionary = dictionary.replace("\": {}, \"", "-")
-		dictionary = dictionary.replace("\": {\"", "~")
-		dictionary = dictionary.replace("*\": 0, \"", "*")
-		dictionary = dictionary.replace("\": {}}, \"", "+")
-		# print dictionary
-		return dictionary
-
-	def expand(self, dictIn):
-		from json import loads
-
-		dictionary = dictIn.read()
-		dictionary = dictionary.replace("+", "\": {}}, \"")
-		dictionary = dictionary.replace("*", "*\": 0, \"")
-		dictionary = dictionary.replace("~", "\": {\"")
-		dictionary = dictionary.replace("-", "\": {}, \"")
-		# print dictionary
-		dictionary = loads(dictionary)
-		# print dictionary
-		return dictionary
 
 # ----------------------------------------------------------------------------
 
@@ -95,40 +75,31 @@ class Dictionary(object):
 class Word(Dictionary):
 
 	def gen(self, maxLen, length=1):
-		from json import loads
-
-		alphabet = ['e','t','a','o','i','n','s',
-					'h','r','d','l','c','u','m',
-					'w','f','g','y','p','b','v',
-					'k','j','x','q','z']
-		# alphabet = ['m','w','f','g','y','p','b',
-		# 			'v','k','j','x','q','z']
-		# diction, antidict = False, False
-		for char in alphabet:
+		dictlist, antilist = 0, 0
+		for char in (c for c in list(lowercase+digits)):
 			self.word.append(char)
 			check = self.check()
-			dictlist, antilist = 0, 0
 			if check:
 				word = ''.join(self.word)
 				if check == 1:
 					print '+', word
 					self.dictlist.append(word)
-					self.add(self.dict)
+					Thread(target=self.add, args=(self.dict, 0)).start()
 					if not dictlist: dictlist += 1
 				elif check == 2:
 					print '-', word
 					self.antilist.append(word)
-					self.add(self.anti)
+					Thread(target=self.add, args=(self.anti, 0)).start()
 					if not antilist: antilist += 1
 			if length < maxLen:
-				self.gen(maxLen, length + 1)
+				nextGen = Thread(target=self.gen, args=(maxLen, length + 1))
+				nextGen.start()
+				nextGen.join()
+				del nextGen
 			del self.word[-1]
-			self.commit(dictlist, antilist)
+		Thread(target=self.commit, args=(dictlist, antilist)).start()
 
 	def check(self):
-		from urllib import urlopen
-		from json import loads
-
 		word = ''.join(self.word)
 		if (word not in self.dictlist) and (word not in self.antilist):
 			url = "http://api.urbandictionary.com/v0/define?term=" + word
@@ -138,8 +109,11 @@ class Word(Dictionary):
 						return 1
 					else:
 						return 2
+				except KeyboardInterrupt:
+					raise KeyboardInterrupt
 				except:
-					pass
+					print "."
+					continue
 		# else:
 		# 	print '*', word
 		return
@@ -161,11 +135,38 @@ class Word(Dictionary):
 		if dictlist:
 			with open('.dict', 'wb') as f:
 				f.truncate()
-				f.write(self.shrink(self.dict))
+				f.write(shrink(self.dict))
 		if antilist:
 			with open('.anti', 'wb') as f:
 				f.truncate()
-				f.write(self.shrink(self.anti))
+				f.write(shrink(self.anti))
+
+# ----------------------------------------------------------------------------
+
+# Helper functions
+
+def shrink(dictIn):
+	from json import dumps
+
+	dictionary = dumps(dictIn)
+	dictionary = dictionary.replace("\": {}, \"", "-")
+	dictionary = dictionary.replace("\": {\"", "~")
+	dictionary = dictionary.replace("*\": 0, \"", "*")
+	dictionary = dictionary.replace("\": {}}, \"", "+")
+	# print dictionary
+	return dictionary
+
+def expand(dictIn):
+	from json import loads
+
+	dictionary = dictIn.read()
+	dictionary = dictionary.replace("+", "\": {}}, \"")
+	dictionary = dictionary.replace("*", "*\": 0, \"")
+	dictionary = dictionary.replace("~", "\": {\"")
+	dictionary = dictionary.replace("-", "\": {}, \"")
+	# print dictionary
+	dictionary = loads(dictionary)
+	return dictionary
 
 # ----------------------------------------------------------------------------
 
